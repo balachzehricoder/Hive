@@ -13,28 +13,12 @@ void main() async {
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
 
-  // This widget is the root of your application.
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Flutter Demo',
+      title: 'CRUD Demo',
       theme: ThemeData(
-        // This is the theme of your application.
-        //
-        // TRY THIS: Try running your application with "flutter run". You'll see
-        // the application has a purple toolbar. Then, without quitting the app,
-        // try changing the seedColor in the colorScheme below to Colors.green
-        // and then invoke "hot reload" (save your changes or press the "hot
-        // reload" button in a Flutter-supported IDE, or press "r" if you used
-        // the command line to start the app).
-        //
-        // Notice that the counter didn't reset back to zero; the application
-        // state is not lost during the reload. To reset the state, use hot
-        // restart instead.
-        //
-        // This works for code too, not just values: Most code changes can be
-        // tested with just a hot reload.
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
+        colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
         useMaterial3: true,
       ),
       home: const MyHomePage(),
@@ -50,13 +34,16 @@ class MyHomePage extends StatefulWidget {
 }
 
 class _MyHomePageState extends State<MyHomePage> {
+  TextEditingController nameController = TextEditingController();
+  TextEditingController emailController = TextEditingController();
   TextEditingController titleController = TextEditingController();
   TextEditingController descController = TextEditingController();
+  TextEditingController dateController = TextEditingController();
+  TextEditingController timeController = TextEditingController();
+  TextEditingController searchController = TextEditingController();
 
-  List showall = [];
-
-// create data
-
+  List showAll = [];
+  List filteredList = [];
   var taskBox = Hive.box("taskBox");
 
   createData(Map<String, dynamic> row) async {
@@ -66,7 +53,6 @@ class _MyHomePageState extends State<MyHomePage> {
 
   updateData(int? key, Map<String, dynamic> row) async {
     await taskBox.put(key, row);
-
     readAll();
   }
 
@@ -74,54 +60,109 @@ class _MyHomePageState extends State<MyHomePage> {
     var data = taskBox.keys.map(
       (e) {
         final items = taskBox.get(e);
-
-        return {"key": e, "title": items["title"], "desc": items["desc"]};
+        return {
+          "key": e,
+          "name": items["name"],
+          "email": items["email"],
+          "title": items["title"],
+          "desc": items["desc"],
+          "date": items["date"],
+          "time": items["time"]
+        };
       },
     ).toList();
 
     setState(() {
-      showall = data.reversed.toList();
+      showAll = data.reversed.toList();
+      filteredList = showAll;
+    });
+  }
+
+  void filterList(String query) {
+    setState(() {
+      if (query.isEmpty) {
+        filteredList = showAll;
+      } else {
+        filteredList = showAll
+            .where((element) =>
+                element["name"].toLowerCase().contains(query.toLowerCase()) ||
+                element["email"].toLowerCase().contains(query.toLowerCase()) ||
+                element["title"].toLowerCase().contains(query.toLowerCase()))
+            .toList();
+      }
     });
   }
 
   @override
   void initState() {
-    // TODO: implement initState
     super.initState();
     readAll();
+    searchController.addListener(() {
+      filterList(searchController.text);
+    });
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      appBar: AppBar(
+        title: const Text("CRUD with Search"),
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(60),
+          child: Padding(
+            padding: const EdgeInsets.all(8.0),
+            child: TextField(
+              controller: searchController,
+              decoration: InputDecoration(
+                prefixIcon: const Icon(Icons.search),
+                hintText: "Search by name, email, or title",
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8.0),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
       floatingActionButton: FloatingActionButton(
         onPressed: () {
-          meraModal(0);
+          openModal(0);
         },
-        child: Icon(Icons.add),
+        child: const Icon(Icons.add),
       ),
       body: ListView.builder(
-        itemCount: showall.length,
+        itemCount: filteredList.length,
         itemBuilder: (context, index) {
           return ListTile(
-            title: Text(showall[index]["title"]),
-            subtitle: Text(showall[index]["desc"]),
+            title: Text(filteredList[index]["title"]),
+            subtitle: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text("Name: ${filteredList[index]["name"]}"),
+                Text("Email: ${filteredList[index]["email"]}"),
+                Text("Date: ${filteredList[index]["date"]}"),
+                Text("Time: ${filteredList[index]["time"]}"),
+                Text("Description: ${filteredList[index]["desc"]}")
+              ],
+            ),
             trailing: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
                 IconButton(
-                    onPressed: () {
-                      var updatevalue = showall[index]["key"];
-                      meraModal(updatevalue);
-                    },
-                    icon: Icon(Icons.edit)),
+                  onPressed: () {
+                    var updateKey = filteredList[index]["key"];
+                    openModal(updateKey);
+                  },
+                  icon: const Icon(Icons.edit),
+                ),
                 IconButton(
-                    onPressed: () {
-                      var deleteValue = showall[index]["key"];
-                      taskBox.delete(deleteValue);
-                      readAll();
-                    },
-                    icon: Icon(Icons.delete)),
+                  onPressed: () {
+                    var deleteKey = filteredList[index]["key"];
+                    taskBox.delete(deleteKey);
+                    readAll();
+                  },
+                  icon: const Icon(Icons.delete),
+                ),
               ],
             ),
           );
@@ -130,16 +171,48 @@ class _MyHomePageState extends State<MyHomePage> {
     );
   }
 
-  void meraModal(int id) {
+  Future<void> pickDate(BuildContext context) async {
+    final DateTime? picked = await showDatePicker(
+      context: context,
+      initialDate: DateTime.now(),
+      firstDate: DateTime(2000),
+      lastDate: DateTime(2100),
+    );
+    if (picked != null) {
+      setState(() {
+        dateController.text = "${picked.toLocal()}".split(' ')[0];
+      });
+    }
+  }
+
+  Future<void> pickTime(BuildContext context) async {
+    final TimeOfDay? picked = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.now(),
+    );
+    if (picked != null) {
+      setState(() {
+        timeController.text = picked.format(context);
+      });
+    }
+  }
+
+  void openModal(int id) {
+    nameController.clear();
+    emailController.clear();
     titleController.clear();
     descController.clear();
+    dateController.clear();
+    timeController.clear();
 
     if (id != 0) {
-      final item = showall.firstWhere(
-        (element) => element["key"] == id,
-      );
+      final item = showAll.firstWhere((element) => element["key"] == id);
+      nameController.text = item["name"];
+      emailController.text = item["email"];
       titleController.text = item["title"];
       descController.text = item["desc"];
+      dateController.text = item["date"];
+      timeController.text = item["time"];
     }
 
     showModalBottomSheet(
@@ -148,36 +221,62 @@ class _MyHomePageState extends State<MyHomePage> {
       builder: (context) {
         return Padding(
           padding: EdgeInsets.fromLTRB(
-              32, 32, 32, MediaQuery.of(context).viewInsets.bottom),
+            32,
+            32,
+            32,
+            MediaQuery.of(context).viewInsets.bottom,
+          ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               TextField(
+                controller: nameController,
+                decoration: const InputDecoration(hintText: "Enter Name"),
+              ),
+              TextField(
+                controller: emailController,
+                decoration: const InputDecoration(hintText: "Enter Email"),
+              ),
+              TextField(
                 controller: titleController,
-                decoration: InputDecoration(hintText: "Enter Your Title"),
+                decoration: const InputDecoration(hintText: "Enter Title"),
               ),
               TextField(
                 controller: descController,
-                decoration: InputDecoration(hintText: "Enter Your description"),
+                decoration: const InputDecoration(hintText: "Enter Description"),
               ),
-              SizedBox(
-                height: 10,
+              TextField(
+                controller: dateController,
+                readOnly: true,
+                decoration: const InputDecoration(hintText: "Enter Date"),
+                onTap: () => pickDate(context),
               ),
+              TextField(
+                controller: timeController,
+                readOnly: true,
+                decoration: const InputDecoration(hintText: "Enter Time"),
+                onTap: () => pickTime(context),
+              ),
+              const SizedBox(height: 10),
               ElevatedButton(
-                  onPressed: () {
-                    String title = titleController.text.toString();
-                    String desc = descController.text.toString();
-                    var data = {"title": title, "desc": desc};
-                    if (id == 0) {
-                      createData(data);
-                    } else {
-                      // update
-
-                      updateData(id, data);
-                    }
-                    Navigator.pop(context);
-                  },
-                  child: id == 0 ? Text("Add") : Text("update"))
+                onPressed: () {
+                  var data = {
+                    "name": nameController.text,
+                    "email": emailController.text,
+                    "title": titleController.text,
+                    "desc": descController.text,
+                    "date": dateController.text,
+                    "time": timeController.text
+                  };
+                  if (id == 0) {
+                    createData(data);
+                  } else {
+                    updateData(id, data);
+                  }
+                  Navigator.pop(context);
+                },
+                child: Text(id == 0 ? "Add" : "Update"),
+              ),
             ],
           ),
         );
